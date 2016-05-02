@@ -3,20 +3,44 @@
  *
  * Use as simple as: $('#barcode').text('Barcode value').bwip({type:'barcode type'});
  *
- * To change options use:
- *  A) $.bwip(options); //set options anytime
- *  B) $('#barcode').bwip(options); //set options and convert element to barcode
+ * Alternatively you can use HTML attributes to configure the barcode:
+ *   $('#barcode')
+ *   	.data('barcode', 'Barcode value')
+ *   	.data('barcode-type', 'Barcode type')
+ *   	.attr('title', 'Human-readable text')
+ *   	.bwip({color: 'white', scale: 1, padding:{x:20}})
+ *   ;
+ *
+ * To change default options call the method on jQuery object:
+ *  $.bwip({color: 'transparent', scale: 2, title: 'Human-readable text');
  *
  *  To set a callback for the barcode conversion use:
  *  A) $('#barcode').bwip(callback); //just pass a function as callback
- *  B) $('#barcode').bwip({callback:callback}); //change settings and include callback
+ *  B) $('#barcode').bwip({callback:callback}); //include the callback in options
+ *  C) $.bwip({callback:callback}); //set default callback (not called in A) or B) case)
+ *  D) $('#barcode').on('bwipdone', callback); //Use event handler for 'bwipdone' or 'bwiperror'
+ *
+ *  Note: Event bwipdone gets the resulting image as a second param (first one is the event).
+ *  Event bwiperror can get a window.BWIPError if failed in BWIPJS, XHR object if failed
+ *  while loading the BWIPJS library from server, or general window.Error in other cases.
  *
  *  Available options:
- *  opt = {
- *  	root:'bwip-js/',     //set folder where BWIP-JS files are located on server; by default loads from root
- *  	type:'barcode type'  //change barcode type - see bwipp subfolder for available types; by default uses 'code128'
+ *  options = {
+ *  	root:'bwip-js/',     //set folder where BWIP-JS files are located on server; by default loads from root or folder where jquery.bwip.js is stored
+ *  	type:'barcode type', //change barcode type - see bwipp subfolder for available types; by default uses 'code128'
+ *  	id: 'id-attribute',  //ID attribute of the image element
+ *  	classname: 'class',  //CSS class for the image element; always adds class bwipCode
+ *  	text: 'string',      //set human-readable text for the barcode or include code if set to True; by default is True
+ *  	title: false,        //if true, it will add title attribute for the image
+ *  	color: 'transparent',//set background color of the barcode, by default is transparent
+ *  	scale: 2,            //set scale of the image as a number or an object with x and y properties, by default is 2
+ *      padding: 0,          //set the image padding as a number or an object with x and y properties, by default is 0
  *  };
  *
+ *  Option root is required only if you use a loader for the files (e.g. Require.js).
+ *  When you include the file directly in HTML as <script src="/path/to/bwip/jquery.bwip.js">
+ *  the plugin will automatically detect the folder and use it. Using root option
+ *  can also make the first conversion faster if your HTML contains lots of script tags.
  *
  * @copy Nothrem Sinsky (c) 2016
  */
@@ -36,16 +60,29 @@
 			"lib/symdesc.js"//,
 		],
 		//private methods
+		getRoot,
 		load,
-		getScript;
+		getScript,
+		error;
 	//var
 
 	//Private methods
+	getRoot = function() {
+		var root = '', src;
+		$('script').each(function() {
+			src = $(this).attr('src');
+			if (src && (src = src.match(/^(.*\/)jquery\.bwip\.js$/i))) {
+				root = src[1];
+				return false;
+			}
+		})
+		return root;
+	};
+
 	getScript = function(process) {
 		var file = opt.root + files.shift();
 		$.ajax({url: file, dataType: 'script', cache: true})
 			.done(function() {
-				console.log('Loaded ', file);
 				if (files.length) {
 					getScript(process);
 				}
@@ -66,27 +103,23 @@
 
 		return $.Deferred(function(process) {
 			$(function() {
+				opt.root = opt.root || getRoot();
 				window.Module = Module = {
 						memoryInitializerPrefixURL: opt.root,
 						preRun:[ function() {
-								console.log('Preloading font');
 								Module.FS_createPreloadedFile('/', "Inconsolata.otf",
 										opt.root + "Inconsolata.otf", true, false);
-								console.log('Font preloaded');
 						} ],
 						postRun:[ function() {
-							console.log('PostRun');
 								var load_font = Module.cwrap("load_font", 'number',
 															['string','string','number']);
-								load_font(opt.root + "Inconsolata.otf", "INCONSOLATA", 108);
-								console.log('Font loading');
+								load_font("Inconsolata.otf", "INCONSOLATA", 108);
 						} ]
 					};
 
 				if (files.length) {
 					$.Deferred(getScript)
 						.done(function() {
-							console.log('BWIP loaded');
 							if (!'BWIPJS' in window) {
 								process.reject();
 								return
@@ -97,16 +130,22 @@
 							lib.ft_monochrome(0);
 							process.resolve(lib);
 						})
-						.fail(function() {
-							console.log('Failed');
-							console.log(arguments);
-							process.reject();
-						})
+						.fail(process.reject)
 					; //getScript
 				}
 			});
 		});
 	};
+
+	/**
+	 * @constructor
+	 */
+	window.BWIPError = function(message, code) {
+		this.name = 'BWIPError';
+		this.message = message;
+		this.code = code;
+	};
+	window.BWIPError.prototype = new Error();
 
 	//jQuery methods
 	$.bwip = function(options) {
@@ -119,49 +158,113 @@
 	}
 
 	$.fn.bwip = function(options) {
-		if (options && !$.isFunction(options)) {
-			$.bwip(options);
+		if ($.isFunction(options)) {
+			options = $.extend({}, opt, {callback: options});
 		}
-		var me = this;
+		if (options && options.root) {
+			$.bwip({root:options.root});
+		}
+		var
+			me = this,
+			type = options ? options.type : undefined;
+
+		options = $.extend({}, opt, options);
 
 		load().done(function(lib) {
 			me.each(function() {
 				var
 					el = $(this),
-					code = $(this).text(),
-					bwip = new lib();
+					code = el.text(),
+					title = el.attr('title'),
+					data = el.data('barcode'),
+					bwip = new lib(),
+					config = {};
 
-				bwip.bitmap(new Bitmap());
-				bwip.scale(2,2);
-				bwip.bitmap().pad(0,0);
+				type = type || el.data('barcode-type') || options.type;
+
+				if (data) {
+					title = title || code;
+					code = data;
+				}
+				else if ('string' === typeof options.text) {
+					title = options.text;
+				}
+
+				config.includetext = bwip.value(options.text !== false);
+				if (title) {
+					config.alttext = bwip.value(title);
+				}
+
+				bwip.bitmap(new Bitmap(options.color || 'transparent'));
+				if (options.scale) {
+					if (options.scale.x || options.scale.y) {
+						bwip.scale(options.scale.x||2, options.scale.y||2);
+					}
+					else {
+						bwip.scale(options.scale, options.scale);
+					}
+				}
+				else {
+					bwip.scale(2, 2);
+				}
+				if (options.padding) {
+					if (options.padding.x || options.padding.y) {
+						bwip.bitmap().pad(options.padding.x||0, options.padding.y||0);
+					}
+					else {
+						bwip.bitmap().pad(options.padding, options.padding);
+					}
+				}
+				else {
+					bwip.bitmap().pad(0, 0);
+				}
+
 				bwip.push(code);
-				bwip.push({includetext: true});
-				bwip.call(opt.type, function(e) {
-					if (e) {
+				bwip.push(config);
+
+				bwip.call(type, function(e) {
+					if (e) { //BWIP returns just a string instead of JS Error
+						if ('string' === typeof e) {
+							e = e.match(/^\[([^]+)][\r\n]*(.*)$/im);
+							e = new BWIPError(e[2], e[1]);
+						}
+
+						el.trigger('bwiperror', e);
 						throw e;
-						return;
+						return; //make sure execution ends
 					}
 
 					var
 						canvas = document.createElement('canvas'),
 						image = $('<img>');
-					el
-						.empty()
-						.append(image);
+
+					image
+						.attr('alt', 'code')
+						.addClass('bwipCode')
+					;
+					if (options.id) {
+						image.attr('id', options.id);
+					}
+					if (opt.classname) {
+						image.addClass(opt.classname);
+					}
+					if (options.title) {
+						image.attr('title', code);
+					}
 
 					bwip.bitmap().show(canvas, 'N');
 					image.attr('src', canvas.toDataURL());
 
-					if ($.isFunction(options)) {
-						options.call(el, image);
-					}
-					else if (options && $.isFunction(options.callback)) {
+					el.empty().append(image);
+
+					if ($.isFunction(options.callback)) {
 						options.callback.call(el, image);
 					}
+					el.trigger('bwipdone', image);
 				});
 			});
-		});
+		}).fail(function(e) {me.trigger('bwiperror', e)});
 
 		return this;
 	}
-})(windows, window.jQuery);
+})(window, window.jQuery);
