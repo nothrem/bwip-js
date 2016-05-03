@@ -59,6 +59,8 @@
 			"lib/canvas.js",
 			"lib/symdesc.js"//,
 		],
+		//private properties
+		process,
 		//private methods
 		getRoot,
 		load,
@@ -95,6 +97,9 @@
 	};
 
 	load = function() {
+		if (process) {
+			return process;
+		}
 		if (lib) {
 			return $.Deferred(function(process) {
 				process.resolve(lib);
@@ -102,6 +107,7 @@
 		}
 
 		return $.Deferred(function(process) {
+			process = this;
 			$(function() {
 				opt.root = opt.root || getRoot();
 				window.Module = Module = {
@@ -120,6 +126,7 @@
 				if (files.length) {
 					$.Deferred(getScript)
 						.done(function() {
+							process = null;
 							if (!'BWIPJS' in window) {
 								process.reject();
 								return
