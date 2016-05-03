@@ -28,8 +28,9 @@
  *  options = {
  *  	root:'bwip-js/',     //set folder where BWIP-JS files are located on server; by default loads from root or folder where jquery.bwip.js is stored
  *  	type:'barcode type', //change barcode type - see bwipp subfolder for available types; by default uses 'code128'
- *  	mode: 'replace',     //defines how the code is placed in HTML; values are 'append', 'prepend', 'after' and 'before' which uses respective jQuery methods;
- *  						 	// mode 'none' will by default replaces content of the element
+ *  	mode: 'replace',     //defines how the image with barcode is placed in HTML; by default replaces content of the element
+ *  							// values are 'append', 'prepend', 'after' and 'before' which uses respective jQuery methods;
+ *  							// mode 'none' will not add the image and only pass it into the callback and bwipdone listeners;
  *  	id: 'id-attribute',  //ID attribute of the image element
  *  	classname: 'class',  //CSS class for the image element; always adds class bwipCode
  *  	text: 'string',      //set human-readable text for the barcode or include code if set to True; by default is True
