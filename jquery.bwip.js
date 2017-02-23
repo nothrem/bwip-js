@@ -28,6 +28,7 @@
  *  options = {
  *  	root:'bwip-js/',     //set folder where BWIP-JS files are located on server; by default loads from root or folder where jquery.bwip.js is stored
  *  	type:'barcode type', //change barcode type - see bwipp subfolder for available types; by default uses 'code128'
+ *  	eclevel:'M',         //error correction level - size of redundant data to allow reading damaged code; L = 7%, M = 15%, Q = 25%, H = 30%; by default uses 'M'
  *  	id: 'id-attribute',  //ID attribute of the image element
  *  	classname: 'class',  //CSS class for the image element; always adds class bwipCode
  *  	text: 'string',      //set human-readable text for the barcode or include code if set to True; by default is True
@@ -193,6 +194,10 @@
 				config.includetext = bwip.value(options.text !== false);
 				if (title) {
 					config.alttext = bwip.value(title);
+				}
+
+				if (options.eclevel) {
+					config.eclevel = options.eclevel;
 				}
 
 				bwip.bitmap(new Bitmap(options.color || 'transparent'));
