@@ -175,7 +175,7 @@
 			me.each(function() {
 				var
 					el = $(this),
-					code = el.text(),
+					code = el.text().trim(),
 					title = el.attr('title'),
 					data = el.data('barcode'),
 					bwip = new lib(),
