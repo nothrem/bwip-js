@@ -182,14 +182,17 @@
 		options = $.extend({}, opt, options);
 
 		load().done(function(lib) {
-			me.each(function() {
+			me.not('.__bwip_processing').each(function() {
 				var
+					start = new Date(),
 					el = $(this),
 					code = el.text().trim(),
 					title = el.attr('title'),
 					data = el.data('barcode'),
 					bwip = new lib(),
 					config = {};
+
+				el.addClass('__bwip_processing');
 
 				type = type || el.data('barcode-type') || options.type;
 
@@ -296,7 +299,9 @@
 					if ($.isFunction(options.callback)) {
 						options.callback.call(el, image);
 					}
+					el.addClass('__bwip_done');
 					el.trigger('bwipdone', image);
+					console.log('BWIP code done in ' + (new Date() - start) + 'ms', this);
 				});
 			});
 		}).fail(function(e) {me.trigger('bwiperror', e)});
