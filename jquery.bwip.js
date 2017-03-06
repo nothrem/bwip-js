@@ -64,7 +64,7 @@
 			"lib/symdesc.js"//,
 		],
 		//private properties
-		process,
+		mainProcess,
 		//private methods
 		getRoot,
 		load,
@@ -101,8 +101,8 @@
 	};
 
 	load = function() {
-		if (process) {
-			return process;
+		if (mainProcess) {
+			return mainProcess;
 		}
 		if (lib) {
 			return $.Deferred(function(process) {
@@ -111,7 +111,7 @@
 		}
 
 		return $.Deferred(function(process) {
-			process = this;
+			mainProcess = this;
 			$(function() {
 				opt.root = opt.root || getRoot();
 				window.Module = Module = {
@@ -130,10 +130,10 @@
 				if (files.length) {
 					$.Deferred(getScript)
 						.done(function() {
-							process = null;
+							mainProcess = null;
 							if (!'BWIPJS' in window) {
 								process.reject();
-								return
+								return;
 							}
 
 							lib = window.BWIPJS;
