@@ -146,16 +146,6 @@
 		});
 	};
 
-	/**
-	 * @constructor
-	 */
-	window.BWIPError = function(message, code) {
-		this.name = 'BWIPError';
-		this.message = message;
-		this.code = code;
-	};
-	window.BWIPError.prototype = new Error();
-
 	//jQuery methods
 	$.bwip = function(options) {
 		if (options) {
@@ -182,7 +172,6 @@
 		load().done(function() {
 			me.not('.__bwip_processing').each(function() {
 				var
-					start = new Date(),
 					el = $(this),
 					code = el.text().trim(),
 					title = el.attr('title'),
@@ -293,7 +282,6 @@
 					}
 					el.addClass('__bwip_done');
 					el.trigger('bwipdone', image);
-					console.log('BWIP code done in ' + (new Date() - start) + 'ms', this);
 				});
 		}).fail(function(e) {me.trigger('bwiperror', e)});
 
