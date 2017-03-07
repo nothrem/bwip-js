@@ -50,18 +50,17 @@
  */
 ;(function(window, $) {
 	var
-		//internal reference to BWIP library
-		lib = false,
+		//internal reference to BWIPJS and BWIPP libraries (can be reused)
+		bwipp = false,
+		bwipjs = false,
 		//options for the Plugin
 		opt = {root:'', type:'code128'},
 		//Files to load
 		files = [
-			'lib/fonts.js',
-			'lib/filedrop-min.js',
 			'freetype.js',
-			"bwip.js",
-			"lib/canvas.js",
-			"lib/symdesc.js"//,
+			"bwipp.js",
+			"bwipjs.js",
+			"lib/bitmap.js",
 		],
 		//private properties
 		mainProcess,
@@ -104,9 +103,9 @@
 		if (mainProcess) {
 			return mainProcess;
 		}
-		if (lib) {
+		if (bwipjs && bwipp) {
 			return $.Deferred(function(process) {
-				process.resolve(lib);
+				process.resolve();
 			});
 		}
 
@@ -118,7 +117,7 @@
 						memoryInitializerPrefixURL: opt.root,
 						preRun:[ function() {
 								Module.FS_createPreloadedFile('/', "Inconsolata.otf",
-										opt.root + "Inconsolata.otf", true, false);
+										opt.root + "fonts/Inconsolata.otf", true, false);
 						} ],
 						postRun:[ function() {
 								var load_font = Module.cwrap("load_font", 'number',
@@ -136,10 +135,9 @@
 								return;
 							}
 
-							lib = window.BWIPJS;
-							lib.load.root = opt.root;
-							lib.ft_monochrome(0);
-							process.resolve(lib);
+							bwipjs = window.BWIPJS;
+							bwipp = new window.BWIPP();
+							process.resolve();
 						})
 						.fail(process.reject)
 					; //getScript
@@ -181,7 +179,7 @@
 
 		options = $.extend({}, opt, options);
 
-		load().done(function(lib) {
+		load().done(function() {
 			me.not('.__bwip_processing').each(function() {
 				var
 					start = new Date(),
@@ -189,7 +187,7 @@
 					code = el.text().trim(),
 					title = el.attr('title'),
 					data = el.data('barcode'),
-					bwip = new lib(),
+					bwip = new bwipjs(window.Module, false),
 					config = {};
 
 				el.addClass('__bwip_processing');
@@ -204,16 +202,16 @@
 					title = options.text;
 				}
 
-				config.includetext = bwip.value(options.text !== false);
+				config.includetext = options.text !== false;
 				if (title) {
-					config.alttext = bwip.value(title);
+					config.alttext = title;
 				}
 
 				if (options.eclevel) {
 					config.eclevel = options.eclevel;
 				}
 
-				bwip.bitmap(new Bitmap(options.color || 'transparent'));
+				bwip.bitmap(new Bitmap(options.color || 'FFF'));
 				if (options.scale) {
 					if (options.scale.x || options.scale.y) {
 						bwip.scale(options.scale.x||2, options.scale.y||2);
@@ -237,20 +235,14 @@
 					bwip.bitmap().pad(0, 0);
 				}
 
-				bwip.push(code);
-				bwip.push(config);
-
-				bwip.call(type, function(e) {
-					if (e) { //BWIP returns just a string instead of JS Error
-						if ('string' === typeof e) {
-							e = e.match(/^\[([^]+)][\r\n]*(.*)$/im);
-							e = new BWIPError(e[2], e[1]);
-						}
-
-						el.trigger('bwiperror', e);
-						throw e;
-						return; //make sure execution ends
-					}
+				try {
+					bwipp(bwip, type, code, config);
+				}
+				catch (e) {
+					el.trigger('bwiperror', e);
+					throw (e);
+					return;
+				}
 
 					var
 						canvas = document.createElement('canvas'),
@@ -303,7 +295,6 @@
 					el.trigger('bwipdone', image);
 					console.log('BWIP code done in ' + (new Date() - start) + 'ms', this);
 				});
-			});
 		}).fail(function(e) {me.trigger('bwiperror', e)});
 
 		return this;
