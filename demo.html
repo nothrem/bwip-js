@@ -21,7 +21,7 @@ var Module = {
 	// memoryInitializerPrefixURL:'your-path-here/',
 	preRun:[ function() {
 			Module.FS_createPreloadedFile("/", "Inconsolata.otf",
-										 "Inconsolata.otf", true, false);
+										 "fonts/Inconsolata.otf", true, false);
 	} ],
 	postRun:[ function() {
 			var load_font = Module.cwrap("load_font", 'number',
@@ -53,18 +53,22 @@ var Module = {
 };
 </script>
 <script type="text/javascript" src="freetype.js"></script>
-<script type="text/javascript" src="bwip.js"></script>
-<script type="text/javascript" src="lib/canvas.js"></script>
+<script type="text/javascript" src="bwipp.js"></script>
+<script type="text/javascript" src="bwipjs.js"></script>
+<script type="text/javascript" src="lib/bitmap.js"></script>
 <script type="text/javascript" src="lib/symdesc.js"></script>
 <script type="text/javascript" src="lib/canvas-toblob.js"></script>
 <script type="text/javascript" src="lib/filesaver.js"></script>
 <script type="text/javascript">
 $(document).ready(function() {
-	var lastSymbol;
-	try {
-		lastSymbol = localStorage.getItem('bwipjsLastSymbol');
-	} catch (e) {
-	}
+	var lastSymbol	= localStorage.getItem('bwipjsLastSymbol');
+	var lastBarText	= localStorage.getItem('bwipjsLastBarText');
+	var lastAltText	= localStorage.getItem('bwipjsLastAltText');
+	var lastOptions = localStorage.getItem('bwipjsLastOptions');
+	var lastRotate	= localStorage.getItem('bwipjsLastRotation');
+	var lastScaleX  = +localStorage.getItem('bwipjsLastScaleX');
+	var lastScaleY  = +localStorage.getItem('bwipjsLastScaleY');
+	var lastFntMono	= +localStorage.getItem('bwipjsLastFontMono');
 
 	var $sel = $('#symbol')
 		.change(function(ev) {
@@ -72,26 +76,40 @@ $(document).ready(function() {
 			if (desc) {
 				$('#symtext').val(desc.text);
 				$('#symopts').val(desc.opts);
-
-				$('#proof-img').css('visibility', 'hidden');
-
-				try {
-					localStorage.setItem('bwipjsLastSymbol', desc.sym);
-				} catch (e) {
-				}
 			} else {
 				$('#symtext').val('');
 				$('#symopts').val('');
 			}
 			$('#symaltx').val('');
 			$('.saveas').css('visibility', 'hidden');
+			$('#proof-img').css('visibility', 'hidden');
+			$('#stats').text('');
+			var canvas = document.getElementById('canvas');
+			canvas.width = canvas.width;
 		});
 
-	if (lastSymbol)
+	if (lastSymbol) {
 		$sel.val(lastSymbol);
-	else 
+	} else {
 		$sel.prop('selectedIndex', 0);
+	}
 	$sel.trigger('change');
+
+	if (lastBarText) {
+		$('#symtext').val(lastBarText);
+		$('#symaltx').val(lastAltText);
+		$('#symopts').val(lastOptions);
+	}
+	if (lastScaleX && lastScaleY) {
+		$('#scaleX').val(lastScaleX);
+		$('#scaleY').val(lastScaleY);
+	}
+	if (lastRotate) {
+		document.getElementById('rot' + lastRotate).checked = true;
+	}
+	if (lastFntMono) {
+		document.getElementById('fontMono').checked = true;
+	}
 
 	$('#scaleX').spinner({ min:1 })
 		.on("spinstop", function(ev) {
@@ -141,98 +159,120 @@ function render() {
 	var text = $('#symtext').val().replace(/^\s+/,'').replace(/\s+$/,'');
 	var altx = $('#symaltx').val().replace(/^\s+/,'').replace(/\s+$/,'');
 	var opts = $('#symopts').val().replace(/^\s+/,'').replace(/\s+$/,'');
+	var rot  = document.querySelector('input[name="rot"]:checked').value;
 
-	var bw = new BWIPJS;
+	// Anti-aliased or monochrome fonts and scaling factors.
+	var monochrome = document.getElementById('fontMono').checked;
+	var scaleX = +document.getElementById('scaleX').value || 2;
+	var scaleY = +document.getElementById('scaleY').value || 2;
 
+	localStorage.setItem('bwipjsLastSymbol',  elt.sym);
+	localStorage.setItem('bwipjsLastBarText', text);
+	localStorage.setItem('bwipjsLastAltText', altx);
+	localStorage.setItem('bwipjsLastOptions', opts);
+	localStorage.setItem('bwipjsLastScaleX', scaleX);
+	localStorage.setItem('bwipjsLastScaleY', scaleY);
+	localStorage.setItem('bwipjsLastFontMono', monochrome ? 1 : 0);
+	localStorage.setItem('bwipjsLastRotation', rot);
+
+	// Link in the freetype module and how to render fonts.
+	var bw = new BWIPJS(Module, monochrome);
+
+	// Clear the page
+	$('#output').text('');
+	$('#stats').text('');
 	$('#proof-img').css('visibility', 'hidden');
 	$('.saveas').css('visibility', 'hidden');
+
+	var canvas = document.getElementById('canvas');
+	canvas.height = 1;
+	canvas.width  = 1;
 
 	// Convert the options to a dictionary object, so we can pass alttext with
 	// spaces.
 	var tmp = opts.split(' '); 
 	opts = {};
 	for (var i = 0; i < tmp.length; i++) {
-		if (!tmp[i])
+		if (!tmp[i]) {
 			continue;
+		}
 		var eq = tmp[i].indexOf('=');
-		if (eq == -1)
-			opts[tmp[i]] = bw.value(true);
-		else
-			opts[tmp[i].substr(0, eq)] = bw.value(tmp[i].substr(eq+1));
-	}
-
-	// Add the alternate text
-	if (altx)
-		opts.alttext = bw.value(altx);
-
-	var rot  = 'N';
-	var rots = [ 'rotL', 'rotR', 'rotI' ];
-	for (var i = 0; i < rots.length; i++) {
-		if (document.getElementById(rots[i]).checked) {
-			rot = rots[i].charAt(3);
-			break;
+		if (eq == -1) {
+			opts[tmp[i]] = true;
+		} else {
+			opts[tmp[i].substr(0, eq)] = tmp[i].substr(eq+1);
 		}
 	}
 
-	// Anti-aliased or monochrome fonts?
-	// This hooks directly into the FreeType library.
-	BWIPJS.ft_monochrome(document.getElementById('fontAnti').checked ? 0 : 1);
-
-	// Feature or bug, BWIPP does not extend the background color into the
+	// Add the alternate text
+	if (altx) {
+		opts.alttext = altx;
+		opts.includetext = true;
+	}
+	// We use mm rather than inches for height - except pharmacode2 height
+	// which is expected to be in mm
+	if (+opts.height && elt.sym != 'pharmacode2') {
+		opts.height = opts.height / 25.4 || 0.5;
+	}
+	// Likewise, width.
+	if (+opts.width) {
+		opts.width = opts.width / 25.4 || 0;
+	}
+	// BWIPP does not extend the background color into the
 	// human readable text.  Fix that in the bitmap interface.
 	if (opts.backgroundcolor) {
-		bw.bitmap(new Bitmap('#' + opts.backgroundcolor));
+		bw.bitmap(new Bitmap(opts.backgroundcolor));
 		delete opts.backgroundcolor;
 	} else {
 		bw.bitmap(new Bitmap);
 	}
 	
-
-	var scaleX = +document.getElementById('scaleX').value || 2;
-	var scaleY = +document.getElementById('scaleY').value || 2;
+	// Set the scaling factors
 	bw.scale(scaleX, scaleY);
 
 	// Add optional padding to the image
 	bw.bitmap().pad(+opts.paddingwidth*scaleX || 0,
 					+opts.paddingheight*scaleY || 0);
 
-	var div = document.getElementById('output');
-	if (div)
-		div.innerHTML = '';
+	var ts0 = Date.now();
 
-	bw.push(text);
-	bw.push(opts);
+	// Render the bar code
+	try {
+		// Create a new BWIPP instance for each
+		BWIPP()(bw, elt.sym, text, opts);
+	} catch (e) {
+		// Watch for BWIPP generated raiseerror's.
+		var msg = ''+e;
+		if (msg.indexOf("bwipp.") >= 0) {
+			$('#output').text(msg);
+		} else if (e.stack) {
+			$('#output').text(e.stack);
+		} else {
+			$('#output').text(e);
+		}
+		return;
+	}
 
-	bw.call(elt.sym, function(e) {
-			if (e) {
-				if (typeof e === 'string') {
-					alert(e);
-				} else if (e.stack) {
-					alert(e.message + '\r\n' + e.stack);
-				} else {
-					var s = '';
-					if (e.fileName)
-						s += e.fileName + ' ';
-					if (e.lineNumber)
-						s += '[line ' + e.lineNumber + '] ';
-					alert(s + (s ? ': ' : '') + e.message);
-				}
-			} else {
-				bw.bitmap().show('canvas', rot);
+	var ts1 = Date.now();
 
-				$('.saveas').css('visibility', 'visible');
-				saveCanvas.basename = elt.sym + '-' +
-						text.replace(/[^a-zA-Z0-9._]+/g, '-');
+	bw.bitmap().show(canvas, rot);
 
-				if (location.search.indexOf('proofs=1') != -1) { 
-					var img = document.getElementById('proof-img');
-					if (img) {
-						img.src = 'proofs/' + elt.sym + '.png';
-						img.style.visibility = 'visible';
-					}
-				}
-			}
-		});
+	var ts2 = Date.now();
+
+	setURL();
+	$('#stats').text('Rendered in ' + (ts2-ts0) + ' msecs');
+	$('.saveas').css('visibility', 'visible');
+	saveCanvas.basename = elt.sym + '-' +
+			text.replace(/[^a-zA-Z0-9._]+/g, '-');
+
+	// Show proofs?
+	if (location.search.indexOf('proofs=1') != -1) { 
+		var img = document.getElementById('proof-img');
+		if (img) {
+			img.src = 'proofs/' + elt.sym + '.png';
+			img.style.visibility = 'visible';
+		}
+	}
 }
 function saveCanvas(type, ext) {
 	var canvas = document.getElementById('canvas');
@@ -240,10 +280,24 @@ function saveCanvas(type, ext) {
 					  saveAs(blob, saveCanvas.basename + ext);
 				  }, type, 1);
 }
+function setURL() {
+	var elt  = symdesc[$('#symbol').val()];
+	var text = $('#symtext').val().replace(/^\s+/,'').replace(/\s+$/,'');
+	var altx = $('#symaltx').val().replace(/^\s+/,'').replace(/\s+$/,'');
+	var opts = $('#symopts').val().replace(/^\s+/,'').replace(/\s+$/,'');
+
+	var url = 'http://api-bwipjs.rhcloud.com/?bcid=' + elt.sym + 
+					'&text=' + encodeURIComponent(text) +
+					(altx ? '&alttext=' + encodeURIComponent(altx) : '') +
+					(opts ? '&' + opts.replace(/ /g, '&') : '');
+
+	document.getElementById('apiurl').href = url;
+}
 </script>
 </head><body>
 <div id="header">
 	<div id="bwipjs">bwip-js // Barcode Writer in Pure JavaScript</div>
+	<div id="version">bwip-js 1.2.3 (2017-01-16) / BWIPP 2016-12-16</div>
 	<div id="fonthdr">&#x25bc; Fonts</div>
 	<div id="fontdiv" style="visibility:hidden">
 		<div class="inner">
@@ -267,10 +321,12 @@ function saveCanvas(type, ext) {
 </div>
 <div id="params">
 <table border=0 cellpading=0 cellspacing=0><tr>
-<td>
+<td style="vertical-align:top">
 	<table border=0 cellpading=0 cellspacing=0>
 	<tr><th>Barcode Type:
+		<!-- Do not change the `select id="symbol"` - see develop/mkdesc -->
 		<td><select id="symbol" style="width:63.5ex">
+			<!-- Barcode Writer in Pure PostScript - Version 2016-12-16 -->
 			<option value="auspost">AusPost 4 State Customer Code</option>
 			<option value="azteccode">Aztec Code</option>
 			<option value="aztecrune">Aztec Runes</option>
@@ -294,6 +350,7 @@ function saveCanvas(type, ext) {
 			<option value="raw">Custom 1D symbology</option>
 			<option value="daft">Custom 4 state symbology</option>
 			<option value="datamatrix">Data Matrix</option>
+			<option value="datamatrixrectangular">Data Matrix Rectangular</option>
 			<option value="datalogic2of5">Datalogic 2 of 5</option>
 			<option value="identcode">Deutsche Post Identcode</option>
 			<option value="leitcode">Deutsche Post Leitcode</option>
@@ -306,6 +363,7 @@ function saveCanvas(type, ext) {
 			<option value="flattermarken">Flattermarken</option>
 			<option value="gs1-cc">GS1 Composite 2D Component</option>
 			<option value="gs1datamatrix">GS1 Data Matrix</option>
+			<option value="gs1datamatrixrectangular">GS1 Data Matrix Rectangular</option>
 			<option value="databarexpanded">GS1 DataBar Expanded</option>
 			<option value="databarexpandedcomposite">GS1 DataBar Expanded Composite</option>
 			<option value="databarexpandedstacked">GS1 DataBar Expanded Stacked</option>
@@ -324,10 +382,13 @@ function saveCanvas(type, ext) {
 			<option value="gs1-128">GS1-128</option>
 			<option value="gs1-128composite">GS1-128 Composite</option>
 			<option value="ean14">GS1-14</option>
+			<option value="hanxin">Han Xin Code</option>
+			<option value="hibcazteccode">HIBC Aztec Code</option>
 			<option value="hibccodablockf">HIBC Codablock F</option>
 			<option value="hibccode128">HIBC Code 128</option>
 			<option value="hibccode39">HIBC Code 39</option>
 			<option value="hibcdatamatrix">HIBC Data Matrix</option>
+			<option value="hibcdatamatrixrectangular">HIBC Data Matrix Rectangular</option>
 			<option value="hibcmicropdf417">HIBC MicroPDF417</option>
 			<option value="hibcpdf417">HIBC PDF417</option>
 			<option value="hibcqrcode">HIBC QR Code</option>
@@ -374,8 +435,12 @@ function saveCanvas(type, ext) {
 		&nbsp;&nbsp;
 		<a class="saveas" href="javascript:saveCanvas('image/jpeg','.jpg')">Save As JPEG</a>
 		&nbsp;&nbsp;
+		<a class="saveas" id="apiurl" href="">Goto URL</a>
+		&nbsp;&nbsp;
+		<br>
+		<div id="stats"></div>
 	</table>
-<td style="padding-left:10mm">
+<td style="padding-left:10mm;vertical-align:top">
 	<table border=0 cellpading=0 cellspacing=5>
 	<tr><th>Scale X,Y:<td>
 		<input type="text" id="scaleX" value=2>
@@ -384,11 +449,11 @@ function saveCanvas(type, ext) {
 		<label for="rotN"><input type="radio" name="rot" value="N"
 			id="rotN" checked>Normal</label>
 		<label for="rotR"><input type="radio" name="rot" value="R"
-			id="rotR">90 CW</label>
+			id="rotR">Right</label>
 		<label for="rotL"><input type="radio" name="rot" value="L"
-			id="rotL">90 CCW</label>
+			id="rotL">Left</label>
 		<label for="rotI"><input type="radio" name="rot" value="I"
-			id="rotI">180</label>
+			id="rotI">Invert</label>
 	<tr><th>Font Rendering:<td>
 		<label for="fontAnti"><input type="radio" name="font" value="A"
 			id="fontAnti" checked>Anti-Aliased</label>
