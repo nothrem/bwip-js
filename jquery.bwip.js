@@ -101,7 +101,7 @@
 		var root = '', src;
 		$('script').each(function() {
 			src = $(this).attr('src');
-			if (src && (src = src.match(/^(.*\/)jquery\.bwip\.js$/i))) {
+			if (src && (src = src.match(/^(.*\/)jquery\.bwip\.js(\?.*)?(#.*)?$/i))) {
 				root = src[1];
 				return false;
 			}
